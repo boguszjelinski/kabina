@@ -9,7 +9,16 @@ import './Kabina.css'
 export const Kabina: FunctionComponent = () => {
     const [stops, setStops] = useState<Array<Stop>>([]);
     const [orders, setOrders] = useState<Array<TaxiOrder>>([]);
-
+    const [inputs, setInputs] = useState({
+        status : "",
+        fromStand : -1,
+        toStand : -1,
+        maxWait : 10, // how long can I wait for a cab
+        maxLoss : 30, // [%] how long can I lose while in pool
+        shared : true,
+        atTime : ""
+    });
+    //const [custId, setCustId] = useState<number>(0);
     let custId = 0; // default
     
     if (location && location.search) {
@@ -21,8 +30,7 @@ export const Kabina: FunctionComponent = () => {
     }
 
     const columns = [
-        { title: 'From', field: 'from'},
-        { title: 'To', field: 'to'},
+        { title: 'Stop', field: 'stop'},
         { title: 'Status', field: 'status'},
     ];
 
@@ -55,26 +63,30 @@ export const Kabina: FunctionComponent = () => {
         }
         
         for (let order of input) {
-            if (!order.route || order.route.status === 'COMPLETED') { 
-                continue; 
-            }
+            if (order.status === 'REFUSED') { continue; }
             let rowArr: TripLeg[] = [];
-            let firstFound = false;
-            for (let leg of order.route.legs) {
-                // find the firt leg for this customer
-                if (!firstFound && leg.fromStand === order.fromStand) {
-                    firstFound = true;
-                }
-                if (firstFound) {
-                    rowArr.push(new TripLeg(
-                        stopName(leg.fromStand),
-                        stopName(leg.toStand),
-                        leg.status,
-                        0
-                    ));
-                }
-                if (leg.toStand === order.toStand) {
-                    break;
+            if (order.route && order.route.status !== 'COMPLETED') { 
+                let firstFound = false;
+                for (let leg of order.route.legs) {
+                    // find the first leg for this customer
+                    if (!firstFound && leg.fromStand === order.fromStand) {
+                        firstFound = true;
+                    }
+                    if (firstFound) {
+                        rowArr.push(new TripLeg(
+                            stopName(leg.fromStand),
+                            explain(leg.status),
+                            0
+                        ));
+                    }
+                    if (leg.toStand === order.toStand) {
+                        rowArr.push(new TripLeg(
+                            stopName(leg.toStand),
+                            explain(leg.status),
+                            0
+                        ));
+                        break;
+                    }
                 }
             }
             orderArr.push(new TaxiOrder(
@@ -86,7 +98,8 @@ export const Kabina: FunctionComponent = () => {
                     order.maxWait,
                     order.maxLoss,
                     order.shared,
-                    order.rcvdTime,
+                    order.rcvdTime && order.rcvdTime.toString().length > 19
+                         ? order.rcvdTime.toString().replaceAll('T',' ').substring(0, 19) : "",
                     order.atTime,
                     order.eta,
                     order.inPool,
@@ -98,6 +111,15 @@ export const Kabina: FunctionComponent = () => {
             ));
         }
         return orderArr;
+    }
+
+    function explain(status: string) {
+        switch(status) {
+            case 'ASSIGNED': return '';
+            case 'STARTED' : return 'LEFT BEHIND'
+            case 'COMPLETED': return 'VISITED';
+        }
+        return '';
     }
 
     function stopName(id: number) : string {
@@ -112,7 +134,7 @@ export const Kabina: FunctionComponent = () => {
         if (stops.length === 0) { // still waiting for stops
             return; 
         }
-        axios.get('http://localhost:8080/orders', { auth: credentials(custId) })
+        axios.get('http://localhost/orders', { auth: credentials(custId) })
             .then(response => {
                 if (response.data) {
                     setOrders(parseResponse(response.data));
@@ -127,7 +149,7 @@ export const Kabina: FunctionComponent = () => {
     }, [stops]);
 
     useEffect(() => {
-        axios.get('http://localhost:8080/stops', { auth: credentials(0) })
+        axios.get('http://localhost/stops', { auth: credentials(0) })
         .then(response => setStops(response.data)); 
     }, []);
 
@@ -135,36 +157,104 @@ export const Kabina: FunctionComponent = () => {
     function renderHeader(order: TripOrder) {
       return ( 
         <table>
-            <tr><th align='right'>Order ID: </th>       <td align='left'>{order.id}</td></tr>
+            <tr><th align='right'>Order ID: </th> <td align='left'>{order.id}</td></tr>
             <tr><th align='right'>Status: </th>   <td align='left'>{order.status}</td></tr>
             <tr><th align='right'>From: </th>     <td align='left'>{order.fromStand}</td></tr>
             <tr><th align='right'>To: </th>       <td align='left'>{order.toStand}</td></tr>
             <tr><th align='right'>Max wait: </th> <td align='left'>{order.maxWait}</td></tr>
-            <tr><th align='right'>Shared: </th>   <td align='left'>{order.shared}</td></tr>
+            <tr><th align='right'>Shared: </th>   <td align='left'>{order.shared?"YES":"NO"}</td></tr>
             <tr><th align='right'>In pool: </th>  <td align='left'>{order.inPool}</td></tr>
             <tr><th align='right'>Received: </th> <td align='left'>{order.rcvdTime}</td></tr>
             <tr><th align='right'>At time: </th>  <td align='left'>{order.atTime}</td></tr>
             <tr><th align='right'>ETA: </th>      <td align='left'>{order.eta}</td></tr>
             <tr><th align='right'>Cab: </th>      <td align='left'>{order.cab}</td></tr>
-            <tr><th align='right'>Route: </th>    <td align='left'>{order.route.id}</td></tr>
+            <tr><th align='right'>Route: </th>    <td align='left'>{order.route ? order.route.id : ""}</td></tr>
         </table>
       );
     }
 
+    const buttonHandler = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        const button: HTMLButtonElement = event.currentTarget;
+        axios.put('http://localhost/orders/' + button.name, 
+                    { status : 'ACCEPTED' }, { auth: credentials(custId) })
+            .then(function (response) {
+                alert(response.data);
+            })
+            .catch(function (error) {
+                alert(error);
+            });
+    };
+      
     function renderRoutes() {
         return orders.map((item, index) => {
            return ( 
             <>
                 {renderHeader(item.order)}
-                <MaterialTable columns={columns} data={item.legs} 
+                { item.order.status === 'ASSIGNED' 
+                  ? <button onClick={buttonHandler} name={item.order.id.toString()}>
+                        Accept assignement
+                    </button>
+                  : <></>
+                }
+                { item && item.legs && item.legs.length > 0
+                  ? <MaterialTable columns={columns} data={item.legs} 
                     options={{ search: false,  
                             paging: false, 
                             showEmptyDataSourceMessage: false, 
                             showTitle: false
                             }}/>
+                  : <></>
+                }
             </>
            );
        });
+    }
+
+    const handleChange = (event: React.ChangeEvent<any>) : void => {
+        const name = event.currentTarget.name;
+        const value = event.currentTarget.type === 'checkbox' 
+                    ? event.currentTarget.checked : event.currentTarget.value;
+        setInputs(values => ({...values, [name]: value}))
+      }
+    
+    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) : void => {
+        event.preventDefault();
+        
+        axios.post('http://localhost/orders', 
+          { fromStand : inputs.fromStand, 
+            toStand : inputs.toStand, 
+            maxWait : inputs.maxWait, 
+            maxLoss : inputs.maxLoss, 
+            shared : inputs.shared,
+            atTime : inputs.atTime ? inputs.atTime.replace('T',' ') + ":00" : inputs.atTime
+          },
+          { auth: credentials(custId) }) //{...inputs})
+          .then(function (response) {
+            setOrders(parseResponse(new Array(response.data)));
+          })
+          .catch(function (error) {
+            alert(error);
+          });
+    }
+    
+    const handleAccept = (id: number) => {
+        
+        axios.post('http://localhost/orders', 
+          { fromStand : inputs.fromStand, 
+            toStand : inputs.toStand, 
+            maxWait : inputs.maxWait, 
+            maxLoss : inputs.maxLoss, 
+            shared : inputs.shared,
+            atTime : inputs.atTime ? inputs.atTime.replace('T',' ') + ":00" : inputs.atTime
+          },
+          { auth: credentials(custId) }) //{...inputs})
+          .then(function (response) {
+            setOrders(parseResponse(new Array(response.data)));
+          })
+          .catch(function (error) {
+            alert(error);
+          });
     }
 
     return (
@@ -172,10 +262,94 @@ export const Kabina: FunctionComponent = () => {
             <div className="nav">
                 <img src={logo} style={{ width: '40px' }} alt="logo" />
             </div>
-            <div className="main">
-                <div>Customer: {custId}</div>
-                {renderRoutes()}
-            </div>
+            { orders && orders.length > 0 
+              ? <div className="main">
+                    <div>Customer: {custId}</div>
+                    {renderRoutes()}
+                </div>
+              : <form onSubmit={handleSubmit}>
+                <h2> Request a cab </h2>
+                <table>
+                  <tr>
+                    <td align='right'><label>From :</label></td>
+                    <td align='left'>
+                        <select name="fromStand" onChange={handleChange}>
+                        {stops.map((stop, index) =>
+                            <option key={index} value={stop.id}>
+                                {stop.name}
+                            </option>
+                        )}
+                        </select>
+                    </td>
+                   </tr> 
+                   <tr>
+                    <td align='right'><label>To :</label></td>
+                    <td align='left'>
+                        <select name="toStand" onChange={handleChange}>
+                        {stops.map((stop, index) =>
+                            <option key={index} value={stop.id}>
+                                {stop.name}
+                            </option>
+                        )}
+                        </select>
+                    </td>
+                   </tr> 
+                   <tr>
+                    <td align='right'><label>Max wait :</label></td>
+                    <td align='left'>
+                        <input 
+                            type="number" 
+                            name="maxWait"
+                            value={inputs.maxWait || ""} 
+                            onChange={handleChange}
+                            style={{ width:'5ch' }}
+                        />
+                        <label> min</label>
+                    </td>
+                   </tr>
+                   <tr>
+                    <td align='right'><label>Shared? :</label></td>
+                    <td align='left'>
+                        <input 
+                            type="checkbox" 
+                            name="shared"
+                            checked={inputs.shared} 
+                            onChange={handleChange}
+                        />
+                    </td>
+                   </tr>
+                   <tr>
+                    <td align='right'><label>Max loss while shared :</label></td>
+                    <td align='left'>
+                        <input 
+                            type="number" 
+                            name="maxLoss"
+                            value={inputs.maxLoss || ""} 
+                            onChange={handleChange}
+                            style={{ width:'5ch' }}
+                        />
+                        <label> %</label>
+                    </td>
+                   </tr>
+                   <tr>
+                    <td align='right'><label>Required at :</label></td>
+                    <td align='left'>
+                        <input 
+                            type="datetime-local" 
+                            name="atTime"
+                            value={inputs.atTime || ""} 
+                            onChange={handleChange}
+                        />
+                    </td>
+                   </tr>
+                   <tr><td></td>
+                       <td style={{ padding : "20px" }}>
+                           <input type="submit" value="Send request" />
+                        </td>
+                   </tr>
+                </table>
+                </form>
+            }
         </div>
     )
 }
@@ -191,19 +365,16 @@ class TaxiOrder  {
 }
 
 class TripLeg {
-    from: string;
-    to: string;
+    stop: string;
     status: string;
     distance: number;
     
     constructor(
-        from: string,
-        to: string,
+        stop: string,
         status: string,
         distance: number
     ) {
-        this.from = from;
-        this.to = to;
+        this.stop = stop;
         this.status = status;
         this.distance = distance;
     }
@@ -217,13 +388,13 @@ class TripOrder {
     maxWait: number;
     maxLoss: number;
     shared: boolean;
-    rcvdTime: Date;
+    rcvdTime: string;
     atTime?: Date;
-    eta: number;
+    eta?: number;
     inPool: boolean;
     cab: string;
     leg: Leg;
-    route: Route;
+    route?: Route;
 
     constructor(
         id: number,
@@ -233,13 +404,13 @@ class TripOrder {
         maxWait: number,
         maxLoss: number,
         shared: boolean,
-        rcvdTime: Date,
+        rcvdTime: string,
         atTime: Date,
         eta: number,
         inPool: boolean,
         cab: Cab,
         leg: Leg,
-        route: Route) {
+        route?: Route) {
             this.id = id;
             this.status = status;
             this.fromStand = fromStand;
@@ -249,10 +420,10 @@ class TripOrder {
             this.shared = shared;
             this.rcvdTime = rcvdTime;
             this.atTime = atTime;
-            this.eta = eta;
+            this.eta = eta > -1 ? eta : undefined;
             this.inPool = inPool;
-            this.cab = route.cab.name && route.cab.name.length > 0 
-                            ? route.cab.name : route.cab.id.toString();
+            let cabId = cab && cab.id ? cab.id.toString() : "Waiting for assignment ...";
+            this.cab = cab && cab.name ? cab.name : cabId;
             this.leg = leg;
             this.route = route;
     }
