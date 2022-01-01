@@ -172,6 +172,7 @@ export const Kabina: FunctionComponent = () => {
     function renderHeader(order: TripOrder) {
       return ( 
         <table style={{ padding: '0px' }} >
+          <tbody>
             <tr><th align='right'>Order ID : </th> <td align='left'>{order.id}</td></tr>
             <tr><th align='right'>Status : </th>   <td align='left'>{order.status}</td></tr>
             <tr><th align='right'>From : </th>     <td align='left'>{stopName(order.fromStand)}</td></tr>
@@ -188,6 +189,7 @@ export const Kabina: FunctionComponent = () => {
             <tr><th align='right'>ETA : </th>      <td align='left'>{order.eta}</td></tr>
             <tr><th align='right'>Cab : </th>      <td align='left'>{order.cab}</td></tr>
             <tr><th align='right'>Route : </th>    <td align='left'>{order.route ? order.route.id : ""}</td></tr>
+          </tbody>
         </table>
       );
     }
@@ -312,7 +314,7 @@ export const Kabina: FunctionComponent = () => {
                 </div>
               : <form onSubmit={handleSubmit}>
                 <h2> Request a cab </h2>
-                <table>
+                <table><tbody>
                   <tr>
                     <td align='right'><label>From :</label></td>
                     <td align='left'>
@@ -390,7 +392,7 @@ export const Kabina: FunctionComponent = () => {
                            <input type="submit" value="Send request" />
                         </td>
                    </tr>
-                </table>
+                   </tbody></table>
                 </form>
             }
         </div>
