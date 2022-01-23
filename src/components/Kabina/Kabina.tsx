@@ -185,7 +185,10 @@ export const Kabina: FunctionComponent = () => {
             <tr><th align='right'>In pool : </th>  <td align='left'>{order.inPool}</td></tr>
             <tr><th align='right'>Received : </th> <td align='left'>{order.received}</td></tr>
             <tr><th align='right'>Started : </th>  <td align='left'>{order.started}</td></tr>
-            <tr><th align='right'>At time : </th>  <td align='left'>{order.atTime}</td></tr>
+            {  order.atTime ?
+                <tr><th align='right'>At time : </th>  <td align='left'>{order.atTime}</td></tr>
+                : <></>
+            }
             <tr><th align='right'>ETA : </th>      <td align='left'>{order.eta}</td></tr>
             <tr><th align='right'>Cab : </th>      <td align='left'>{order.cab}</td></tr>
             <tr><th align='right'>Route : </th>    <td align='left'>{order.route ? order.route.id : ""}</td></tr>
